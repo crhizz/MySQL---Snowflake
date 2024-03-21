@@ -1,0 +1,64 @@
+WITH error_disbursement_journal AS (SELECT 
+    r.type AS TYPE,
+    d.merchant_id AS MERCHANT_ID,
+    d.report_id AS REPORT_ID,
+    CASE WHEN r.type IS NULL THEN DATE(convert_timezone('UTC', 'America/Mexico_City', d.report_date_local))
+    ELSE DATE(d.report_date_local)
+    END AS REPORT_DATE_LOCAL,
+    d.amount AS AMOUNT,
+    d.status AS STATUS,
+    d.error_description AS ERROR_DESCRIPTION,
+    CASE WHEN d.error_description = 'Bank account information not available' THEN 'SIN CLABE'
+    ELSE 'ERROR USUAL'
+    END AS TIPO_ERROR,
+    CASE WHEN m.state IS NOT NULL THEN m.state
+    ELSE 'MERCHANT_NOT_FOUND'
+    END AS STATE,
+    DATE(convert_timezone('UTC', 'America/Mexico_City', d.updated_at)) as ULTIMO_MOV,
+    TO_CHAR(DATE(convert_timezone('UTC', 'America/Mexico_City', d.updated_at)), 'MMMM-YYYY') AS NAME_MONTH_ULTIMO_MOV,
+    LPAD(MONTH((convert_timezone('UTC', 'America/Mexico_City', d.updated_at))),2,'0') AS NUMBER_MONTH_ULTIMO_MOV,
+    CONCAT(number_month_ultimo_mov,' ',name_month_ultimo_mov) AS MONTH_ULTIMO_MOV,
+   COUNT(DISTINCT db.disbursement_batch_id) AS COUNT_DAI
+    FROM PRD_CLIP_ANALYTICS.CLIPDW_DISBURSEMENT.DISBURSEMENTS d
+    LEFT JOIN PRD_CLIP_ANALYTICS.CLIPDW_SETTLEMENT.REPORTS r ON r.report_id = d.report_id
+    LEFT JOIN PRD_CLIP_ANALYTICS.CLIPDW_DISBURSEMENT.DISBURSEMENT_BATCH_ENTRIES dbe ON dbe.disbursement_id = d.disbursement_id
+    LEFT JOIN PRD_CLIP_ANALYTICS.CLIPDW_DISBURSEMENT.DISBURSEMENT_BATCHES db ON db.disbursement_batch_id = dbe.disbursement_batch_id
+    LEFT JOIN PRD_CLIP_ANALYTICS.CLIPDW_PROVISIONING.MERCHANTS m ON d.merchant_id = m.id
+    WHERE d.status = 'ERROR' OR d.status = 'ERROR_TV'
+    GROUP BY r.type, d.merchant_id, d.report_id, d.report_date_local, d.amount, d.status, d.error_description, m.state, d.created_at, d.updated_at)
+
+SELECT TYPE,
+MERCHANT_ID,
+REPORT_ID,
+REPORT_DATE_LOCAL,
+TO_CHAR(REPORT_DATE_LOCAL, 'MMMM-YYYY') AS NAME_MONTH_REPORT_DATE_LOCAL,
+AMOUNT,
+STATUS,
+ERROR_DESCRIPTION,
+TIPO_ERROR,
+STATE,
+COUNT_DAI,
+ULTIMO_MOV,
+NAME_MONTH_ULTIMO_MOV,
+NUMBER_MONTH_ULTIMO_MOV,
+MONTH_ULTIMO_MOV,
+CASE WHEN REPORT_DATE_LOCAL = ULTIMO_MOV THEN 'SAME_DAY'
+ELSE 'RESCHEDULED'
+END AS PAYMENT_TYPE,
+CASE WHEN NAME_MONTH_REPORT_DATE_LOCAL = NAME_MONTH_ULTIMO_MOV THEN 'NEW'
+ELSE 'ERROR'
+END AS STATUS_CUBETA,
+CASE WHEN PAYMENT_TYPE = 'SAME_DAY' AND STATUS_CUBETA = 'NEW' AND TIPO_ERROR = 'ERROR USUAL' THEN 'Error pago del día nuevas entradas'
+WHEN PAYMENT_TYPE = 'RESCHEDULED' AND STATUS_CUBETA = 'NEW' AND TIPO_ERROR = 'ERROR USUAL' THEN 'Error reprogramaciones nuevas entradas'
+WHEN PAYMENT_TYPE = 'SAME_DAY' AND STATUS_CUBETA = 'NEW' AND TIPO_ERROR = 'SIN CLABE' THEN 'Error por retained alta clabe (Anterior Retained alta clabe)'
+WHEN PAYMENT_TYPE = 'RESCHEDULED' AND STATUS_CUBETA = 'NEW' AND TIPO_ERROR = 'SIN CLABE' THEN 'Error por retained alta clabe (Anterior Retained alta clabe)'
+ELSE 'NOT_DEFINED'
+END AS SETTLEMENT_CONCEPT,
+CASE WHEN PAYMENT_TYPE = 'SAME_DAY' AND STATUS_CUBETA = 'NEW' AND TIPO_ERROR = 'ERROR USUAL' THEN '219-02-03'
+WHEN  PAYMENT_TYPE = 'RESCHEDULED' AND STATUS_CUBETA = 'NEW' AND TIPO_ERROR = 'ERROR USUAL' THEN '219-02-03'
+WHEN PAYMENT_TYPE = 'SAME_DAY' AND STATUS_CUBETA = 'NEW' AND TIPO_ERROR = 'SIN CLABE' THEN '219-02-03'
+ELSE 'NOT_DEFINED'
+END AS ACCOUNTING
+FROM error_disbursement_journal
+//WHERE ULTIMO_MOV = '2024-01-04'
+ORDER BY REPORT_DATE_LOCAL

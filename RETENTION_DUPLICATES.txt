@@ -1,0 +1,16 @@
+with retention_rn as (
+    select 
+        r.*,
+        row_number() over (partition by r.transaction_id order by r.created_at) rn
+    from PRD_CLIP_ANALYTICS.CLIPDW_RISK_OPERATIONS.RETENTIONS r
+    where r.created_at >= '2023-01-01' 
+        and r.origin <> 'service-fraud-prevention' -- only automated retentions
+)
+select 
+    created_at AS r_date,
+    transaction_id AS txn,
+    merchant_id AS merchant_id,
+    merchant_name AS merchant_name,
+    gross_amount AS amount_to_release
+from retention_rn
+where rn >= 2

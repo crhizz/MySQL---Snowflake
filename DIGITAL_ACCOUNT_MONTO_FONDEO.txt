@@ -1,0 +1,35 @@
+WITH qualified_merchant_with_all_mvnts AS (
+    SELECT
+        TO_CHAR(TO_DATE(ap_journal.eff_dt), 'yyyy-mm-dd') AS date_key
+        ,ap_journal.*
+    FROM prd_clip_analytics.clipds_dynamo_gold.ap_journal      
+    INNER JOIN prd_clip_analytics.clipds_dynamo_gold.merchant_attributes
+        ON REPLACE(merchant_attributes.record_data:merchant_id.S,'mid_','M#') = ap_journal.acct_id
+           AND merchant_attributes.record_data:payment_program.S = 'DIGITAL_ACCOUNT'
+)
+,digital_account_date_constraints AS (
+    SELECT
+        acct_id
+        ,NVL(
+            MAX(IFF(ap_journal.mvnt_type = 'DISB_RQ', ap_journal.eff_dt, NULL)),
+            MIN(ap_journal.eff_dt)
+        ) eff_dt_constraint
+        ,MAX(ap_journal.eff_dt) eff_dt_latest
+    FROM prd_clip_analytics.clipds_dynamo_gold.ap_journal
+    INNER JOIN qualified_merchant_with_all_mvnts USING (acct_id)
+    GROUP BY 1
+) 
+SELECT  
+    date_trunc('day', TO_DATE(qm.eff_dt, 'YYYY-MM-DD HH24:MI:SS'))::date as effective_date
+    ,count(qm.mvnt_id) as qtyMovs--Cantidad de movimientos
+    ,sum(qm.amount) as totalAmount --Monto a fondear
+FROM qualified_merchant_with_all_mvnts qm 
+    INNER JOIN digital_account_date_constraints dc
+    ON qm.acct_id = dc.acct_id AND qm.eff_dt >= dc.eff_dt_constraint
+WHERE 1=1
+    AND effective_date >= '2023-11-15'
+    AND qm.mvnt_type not ilike '%_da_%'
+    AND qm.mvnt_type <> 'DISB_RQ'
+group by effective_date
+order by effective_date
+;

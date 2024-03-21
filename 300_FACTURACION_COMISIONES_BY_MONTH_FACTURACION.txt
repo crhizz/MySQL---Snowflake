@@ -1,0 +1,206 @@
+WITH DATA_TPV_FEES_TAXES AS (SELECT ap_j_sett.MERCHANT_ID AS MERCHANT_ID,
+    (ZEROIFNULL(p_sett.psp_amount)) AS SETT_PSP_AMOUNT,
+    (ZEROIFNULL(sml_sett.GROSS_AMOUNT)) AS SETT_GROSS_AMOUNT,
+    (ZEROIFNULL(sml_sett.FEES)) AS SETT_FEES,
+    (ZEROIFNULL(sml_sett.TAXES)) AS SETT_TAXES,
+    (ZEROIFNULL(sml_sett.NET_AMOUNT)) AS SETT_NET_AMOUNT,
+    (ZEROIFNULL(ap_j_sett.AMOUNT)) AS SETT_JOURNAL_AMOUNT,
+    (ZEROIFNULL(p_cancel.psp_amount)) AS CANCEL_PSP_AMOUNT,
+    (ZEROIFNULL(sml_cancel.GROSS_AMOUNT)) AS CANCEL_GROSS_AMOUNT,
+    (ZEROIFNULL(sml_cancel.FEES)) AS CANCEL_FEES,
+    (ZEROIFNULL(sml_cancel.TAXES)) AS CANCEL_TAXES,
+    (ZEROIFNULL(sml_cancel.NET_AMOUNT)) AS CANCEL_NET_AMOUNT,
+    (ZEROIFNULL(ap_j_cancel.AMOUNT)) AS CANCEL_JOURNAL_AMOUNT,
+    (ZEROIFNULL(SETT_PSP_AMOUNT - CANCEL_PSP_AMOUNT)) AS PSP_AMOUNT,
+    (ZEROIFNULL(SETT_GROSS_AMOUNT - CANCEL_GROSS_AMOUNT)) AS GROSS_AMOUNT,
+    CASE WHEN ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_FAST_PYMNT_RQ' THEN 0
+    WHEN ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_REGULAR_PYMNT_RQ' THEN 0
+    ELSE (ZEROIFNULL(SETT_GROSS_AMOUNT - CANCEL_GROSS_AMOUNT))
+    END AS GROSS_AMOUNT_FINAL,
+    (ZEROIFNULL(SETT_FEES - CANCEL_FEES)) AS FEES,
+    (ZEROIFNULL(SETT_TAXES - CANCEL_TAXES)) AS TAXES,
+    (ZEROIFNULL(SETT_NET_AMOUNT - CANCEL_NET_AMOUNT)) AS NET_AMOUNT,
+    sml_sett.MDR AS MDR,
+    sml_sett.MSI AS MSI,
+    sml_sett.MVNT_TYPE AS MVNT_TYPE,
+    sml_sett.PYMT_PRG AS PYMT_PRG,
+    ap_j_sett.CURRENCY AS CURRENCY,
+    ap_j_sett.TYPE_REQUEST AS TYPE_REQUEST,
+    ap_j_sett.MVNT_ID AS MVNT_ID,
+    ap_j_sett.MOVEMENT_TYPE AS MOVEMENT_TYPE,
+    ap_j_sett.SOURCE_TYPE AS SOURCE_TYPE,
+    p_sett.STATUS_CODE AS STATUS_CODE,
+    CASE WHEN dcc.NB_STATUS = 'Tarjeta con DCC' THEN 'Tarjeta con DCC'
+    ELSE 'Tarjeta sin DCC'
+    END AS DCC_STATUS,
+    ap_j_sett.CREATED_AT AS CREATED_AT,
+    ap_j_sett.EFF_DT AS EFF_DT,
+    p_sett.CREATED_AT_PAYMENT_TABLE,
+    TO_CHAR(ap_j_sett.EFF_DT,'MMMM yyyy') AS MONTH_FACTURACION,
+    TO_CHAR(ap_j_sett.CREATED_AT,'MMMM yyyy') AS MONTH_TRANSACCION,
+    CASE WHEN ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_FAST_PYMNT_RQ' THEN (ZEROIFNULL(SETT_GROSS_AMOUNT - CANCEL_GROSS_AMOUNT))
+    WHEN ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_REGULAR_PYMNT_RQ' THEN (ZEROIFNULL(SETT_GROSS_AMOUNT - CANCEL_GROSS_AMOUNT))
+    ELSE 0
+    END AS GROSS_AMOUNT_DP,
+    CASE WHEN ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_FAST_PYMNT_RQ' THEN ZEROIFNULL(ZEROIFNULL(SETT_PSP_AMOUNT - CANCEL_PSP_AMOUNT) - GROSS_AMOUNT_DP)
+    WHEN ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_REGULAR_PYMNT_RQ' THEN ZEROIFNULL(ZEROIFNULL(SETT_PSP_AMOUNT - CANCEL_PSP_AMOUNT) - GROSS_AMOUNT_DP)
+    ELSE 0
+    END AS INGRESO_DEFERRED,
+    ZEROIFNULL(INGRESO_DEFERRED)/1.1600 AS FEES_DEFERRED,
+    ZEROIFNULL(FEES_DEFERRED)*0.1600 AS TAXES_DEFERRED,
+    CASE 
+    WHEN ap_j_sett.MOVEMENT_TYPE = 'REGULAR_PYMT_RQ' AND DCC_STATUS = 'Tarjeta sin DCC' AND PYMT_PRG = 'REGULAR_PAYMENT' THEN 'REGULAR_TPV'
+   
+    WHEN ap_j_sett.MOVEMENT_TYPE = 'FAST_PYMT_RQ' AND DCC_STATUS = 'Tarjeta sin DCC' AND PYMT_PRG = 'FAST_PAYMENT' THEN 'FAST_PAYMENT_TPV'
+    
+    WHEN (ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_FAST_PYMNT_RQ' OR ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_REGULAR_PYMNT_RQ') AND DCC_STATUS = 'Tarjeta sin DCC'
+    AND (PYMT_PRG = 'REGULAR_PAYMENT' OR PYMT_PRG = 'FAST_PAYMENT') THEN 'DEFERRED_TPV'
+    
+    WHEN (ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_FAST_PYMNT_RQ' OR ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_REGULAR_PYMNT_RQ') AND DCC_STATUS = 'Tarjeta sin DCC'
+    AND PYMT_PRG = 'DIGITAL_ACCOUNT' THEN 'DIGITAL_ACCOUNT_TPV_DEFERRED'
+    
+    WHEN (ap_j_sett.MOVEMENT_TYPE = 'REGULAR_PYMT_RQ' OR ap_j_sett.MOVEMENT_TYPE = 'FAST_PYMT_RQ') AND DCC_STATUS = 'Tarjeta sin DCC'
+    AND PYMT_PRG = 'DIGITAL_ACCOUNT' THEN 'DIGITAL_ACCOUNT_TPV_SETTLEMENT'
+    
+    WHEN (ap_j_sett.MOVEMENT_TYPE = 'REGULAR_PYMT_RQ' OR ap_j_sett.MOVEMENT_TYPE = 'FAST_PYMT_RQ') AND DCC_STATUS = 'Tarjeta con DCC'
+    AND (PYMT_PRG = 'REGULAR_PAYMENT' OR PYMT_PRG = 'FAST_PAYMENT') THEN 'DCC_TPV'
+
+    WHEN (ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_FAST_PYMNT_RQ' OR ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_REGULAR_PYMNT_RQ') AND DCC_STATUS = 'Tarjeta con DCC'
+    AND (PYMT_PRG = 'REGULAR_PAYMENT' OR PYMT_PRG = 'FAST_PAYMENT') THEN 'DCC_DEFERRED_TPV'
+    
+    WHEN (ap_j_sett.MOVEMENT_TYPE = 'REGULAR_PYMT_RQ' OR ap_j_sett.MOVEMENT_TYPE = 'FAST_PYMT_RQ') AND DCC_STATUS = 'Tarjeta con DCC'
+    AND PYMT_PRG = 'DIGITAL_ACCOUNT' THEN 'DIGITAL_ACCOUNT_TPV_DCC'
+
+    WHEN (ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_FAST_PYMNT_RQ' OR ap_j_sett.MOVEMENT_TYPE = 'DEFERRED_REGULAR_PYMNT_RQ') AND DCC_STATUS = 'Tarjeta con DCC'
+    AND PYMT_PRG = 'DIGITAL_ACCOUNT' THEN 'DIGITAL_ACCOUNT_DEFERRED_TPV_DCC'
+    ELSE 'NOT_CLASSIFIED'
+    END AS TPV_TYPE,
+    IFF(ap_j_sett.AMOUNT <0, (ap_j_sett.AMOUNT)*-1, ap_j_sett.AMOUNT) AS ABS_JOURNAL_AMOUNT,
+    IFF(ap_j_sett.SOURCE_TYPE ='TOPUPS', (ZEROIFNULL(ABS_JOURNAL_AMOUNT/1.1600)), 0) AS TOPUPS_FEES,
+    IFF(ap_j_sett.SOURCE_TYPE ='TOPUPS', TOPUPS_FEES*0.1600, 0) AS TOPUPS_TAXES,
+    IFF(ap_j_sett.MOVEMENT_TYPE ='CASHBACK_RQ', ZEROIFNULL(ap_j_sett.AMOUNT/1.1600), 0) AS FEES_CASHBACK,
+    IFF(ap_j_sett.MOVEMENT_TYPE ='CASHBACK_RQ', ZEROIFNULL(FEES_CASHBACK*0.1600), 0) AS TAXES_CASHBACK,
+    CASE WHEN sbt.SERVICE_BILLERS_STATUS ='journal-completed' AND ap_j_sett.SOURCE_TYPE = 'BILL_PYMNT' THEN  ZEROIFNULL(sbt.GROSS_AMOUNT)
+    ELSE 0
+    END AS BILL_PAYMENTS_GROSS_AMOUNT,
+    CASE WHEN sbt.SERVICE_BILLERS_STATUS ='journal-completed' AND ap_j_sett.SOURCE_TYPE = 'BILL_PYMNT' THEN  ZEROIFNULL(sbt.AMOUNT_PAID)
+    ELSE 0
+    END AS BILL_PAYMENTS_AMOUNT_PAID,
+    CASE WHEN sbt.SERVICE_BILLERS_STATUS ='journal-completed' AND ap_j_sett.SOURCE_TYPE = 'BILL_PYMNT' THEN  ZEROIFNULL(sbt.MERCHANT_COMMISSION/1.1600)
+    ELSE 0
+    END AS BILL_PAYMENTS_FEES_DEP,
+    CASE WHEN sbt.SERVICE_BILLERS_STATUS ='journal-completed' AND ap_j_sett.SOURCE_TYPE = 'BILL_PYMNT' THEN  ZEROIFNULL(BILL_PAYMENTS_FEES_DEP*0.1600)
+    ELSE 0
+    END AS BILL_PAYMENTS_TAXES_DEP,
+    CASE WHEN sbt.SERVICE_BILLERS_STATUS ='journal-completed' AND ap_j_sett.SOURCE_TYPE = 'BILL_PYMNT' THEN  ZEROIFNULL(sbt.MERCHANT_COMMISSION/1.1600)
+    ELSE 0
+    END AS BILL_PAYMENTS_FEES_COM,
+    CASE WHEN sbt.SERVICE_BILLERS_STATUS ='journal-completed' AND ap_j_sett.SOURCE_TYPE = 'BILL_PYMNT' THEN  ZEROIFNULL(BILL_PAYMENTS_FEES_DEP*0.1600)
+    ELSE 0
+    END AS BILL_PAYMENTS_TAXES_COM,
+    CASE WHEN sbt.SERVICE_BILLERS_STATUS ='journal-completed' AND ap_j_sett.SOURCE_TYPE = 'BILL_PYMNT' THEN  ZEROIFNULL(sbt.FRONTEND_COMMISSION/1.1600)
+    ELSE 0
+    END AS INGRESO_BILL_PAYMENTS_FEES,
+    CASE WHEN sbt.SERVICE_BILLERS_STATUS ='journal-completed' AND ap_j_sett.SOURCE_TYPE = 'BILL_PYMNT' THEN  INGRESO_BILL_PAYMENTS_FEES*0.1600
+    ELSE 0
+    END AS INGRESO_BILL_PAYMENTS_TAXES
+    FROM(SELECT REPLACE(REPLACE(REPLACE(acct_id, 'M#'),'L#'),'F#') AS merchant_id,
+            AMOUNT as AMOUNT,
+            DATE(CONVERT_TIMEZONE('UTC','America/Mexico_City',CREATED_AT)) as created_at,
+            REPLACE(CURRENCY, '""') as currency,
+            REPLACE(DESC, '""') as type_request,
+            DATE(CONVERT_TIMEZONE('UTC','America/Mexico_City',eff_dt)) as eff_dt,
+            DATE(CONVERT_TIMEZONE('UTC','America/Mexico_City',mvnt_dt)) as movement_day,
+            REPLACE(mvnt_id, '""') as mvnt_id,
+            REPLACE(mvnt_type, '""') as movement_type,
+            DATE(CONVERT_TIMEZONE('UTC','America/Mexico_City',rq_eff_dt)) as request_effective_date,
+            DATE(CONVERT_TIMEZONE('UTC','America/Mexico_City',slot_dt)) as slot_date,
+            REPLACE(src_type, '""') as source_type
+            FROM PRD_CLIP_ANALYTICS.CLIPDS_DYNAMO_GOLD.AP_JOURNAL
+            WHERE source_type IN ('SETT','TOPUPS','BILL_PYMNT')
+            OR MOVEMENT_TYPE IN ('CASHBACK_RQ')
+            AND eff_dt >= '2023-01-01'
+            ORDER BY created_at) ap_j_sett
+
+            LEFT JOIN(SELECT
+            REPLACE(mvnt_id, '""') AS mvnt_id,
+            amount AS gross_amount,
+            fees AS fees,
+            taxes AS taxes,
+            net_amount AS net_amount,
+            mdr AS mdr,
+            msi AS msi,
+            REPLACE(mvnt_type, '""') AS mvnt_type,
+            REPLACE(pymt_prg, '""') AS pymt_prg
+            FROM PRD_CLIP_ANALYTICS.CLIPDS_DYNAMO_GOLD.SETTLEMENT_MASTER_LOG
+            WHERE mvnt_type = 'STL_PCS_RQ') sml_sett ON sml_sett.mvnt_id = ap_j_sett.mvnt_id
+
+            LEFT JOIN (SELECT
+            REPLACE(mvnt_id, '""') as mvnt_id,
+            REPLACE(mvnt_type, '""') as movement_type,
+            amount as AMOUNT
+            FROM PRD_CLIP_ANALYTICS.CLIPDS_DYNAMO_GOLD.AP_JOURNAL
+            WHERE  movement_type = 'CANCEL_RQ'
+            ORDER BY created_at) ap_j_cancel ON ap_j_sett.mvnt_id = ap_j_cancel.mvnt_id
+
+            LEFT JOIN (SELECT
+            REPLACE(mvnt_id, '""') AS mvnt_id,
+            amount AS gross_amount,
+            fees AS fees,
+            taxes AS taxes,
+            net_amount AS net_amount
+            FROM PRD_CLIP_ANALYTICS.CLIPDS_DYNAMO_GOLD.SETTLEMENT_MASTER_LOG
+            WHERE mvnt_type = 'STL_PCS_RQ') sml_cancel ON sml_cancel.mvnt_id = ap_j_cancel.mvnt_id
+
+            LEFT JOIN(SELECT transaction_id,
+            psp_amount,
+            status_code,
+            DATE(CONVERT_TIMEZONE('UTC','America/Mexico_City',created_at)) AS CREATED_AT_PAYMENT_TABLE
+            FROM PRD_CLIP_ANALYTICS.CLIPDW_TRANSACTION.PAYMENT) p_sett on sml_sett.mvnt_id = p_sett.transaction_id
+
+            LEFT JOIN(SELECT transaction_id,
+            psp_amount
+            FROM PRD_CLIP_ANALYTICS.CLIPDW_TRANSACTION.PAYMENT) p_cancel on sml_cancel.mvnt_id = p_cancel.transaction_id
+
+            LEFT JOIN(SELECT transaction_id,
+            nb_status,
+            cc_nb_currency_code,
+            dcc_amount,
+            nu_markup,
+            rate
+            FROM PRD_CLIP_ANALYTICS.CLIPDS_DYNAMO_GOLD.DCC_RATE) dcc ON sml_sett.mvnt_id = dcc.transaction_id
+            
+            LEFT JOIN(SELECT txn_id,
+            (amount_paid + frontend_commission) AS gross_amount,
+            frontend_commission,
+            amount_paid,
+            merchant_commission,
+            action_type,
+            service_billers_status,
+            error_msg
+            FROM PRD_CLIP_ANALYTICS.CLIPDS_DYNAMO_GOLD.SERVICE_BILLERS_TRANSACTION) sbt ON ap_j_sett.mvnt_id = sbt.txn_id)
+
+            SELECT MONTH_FACTURACION,
+            MONTH_TRANSACCION,
+            CREATED_AT,
+            CREATED_AT_PAYMENT_TABLE,
+            STATUS_CODE,
+            SUM(GROSS_AMOUNT_FINAL) AS GROSS_AMOUNT_FINAL,
+            SUM(FEES) AS FEES,
+            --SUM(TAXES) AS TAXES,
+            SUM(TOPUPS_FEES) AS TOPUPS_FEES,
+            SUM(INGRESO_BILL_PAYMENTS_FEES) AS INGRESO_BILL_PAYMENTS_FEES,
+            SUM(BILL_PAYMENTS_FEES_DEP) AS BILL_PAYMENTS_FEES_DEP,
+            SUM(FEES_CASHBACK) AS FEES_CASHBACK,
+            (SUM(FEES) - SUM(TOPUPS_FEES) + SUM(INGRESO_BILL_PAYMENTS_FEES) - SUM(BILL_PAYMENTS_FEES_DEP) - SUM(FEES_CASHBACK)) AS NET_FEE,
+            (ZEROIFNULL(NET_FEE*0.1600)) AS TAXES,
+            SUM(GROSS_AMOUNT_DP) AS GROSS_AMOUNT_DP,
+            SUM(FEES_DEFERRED) AS FEES_DEFERRED,
+            SUM(TAXES_DEFERRED) AS TAXES_DEFERRED
+            FROM DATA_TPV_FEES_TAXES
+            WHERE (CREATED_AT_PAYMENT_TABLE >= '2024-01-01'
+            AND CREATED_AT_PAYMENT_TABLE <= '2024-01-31')
+            OR (EFF_DT >= '2024-01-01'
+            AND EFF_DT <= '2024-01-31')
+            GROUP BY MONTH_FACTURACION, MONTH_TRANSACCION, CREATED_AT, CREATED_AT_PAYMENT_TABLE, STATUS_CODE
+            ORDER BY MONTH_FACTURACION, MONTH_TRANSACCION

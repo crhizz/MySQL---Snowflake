@@ -1,0 +1,43 @@
+with clip as (
+    SELECT
+        P.merchant_id,
+        P.transaction_id,
+        P.type,
+        P.order_id,
+        date_trunc('day',CONVERT_TIMEZONE ('UTC', 'America/Mexico_City', P.created_at)) as fecha,
+        P.created_at,
+        P.amount,
+        tbp.bin,
+        P.last4,
+        P.AFFILIATION,
+        P.trx_id,
+        P.term,
+        P.status_code,
+        P.brand,
+        P.psp,
+        P.PAYMENT_SUB_TYPE,
+        P.UPDATED_AT,
+        P.RECEIPT_NO,
+        P.issuer,
+        P.device_id,
+        P.reversal_initiator,
+        p.card_country_code,
+        --tbp.card_type,
+        p.status_msg,
+        p.READER_TYPE_CODE,
+        TAI.AFFILIATION,
+        TAI.SUB_AFFILIATION,
+        TAI.MCC
+        FROM clipdw_transaction.payment p
+        LEFT JOIN CLIPDW_TRANSACTION.TRANSACTION_BIN_PROFILE TBP ON TBP.transaction_id = P.transaction_id
+        LEFT JOIN CLIPDW_TRANSACTION.TRANSACTION_AFFILIATION_INFO TAI ON TAI.transaction_id = TBP.transaction_id
+        WHERE TO_CHAR(CONVERT_TIMEZONE('UTC', 'America/Mexico_City', p.created_at),'YYYY-MM-DD') >= '2023-04-01'
+        AND p.order_id in ('664688159353'))
+        select * from clip inner join prd_clip_analytics.clipds_recon_getnet.settransactiongmr as getnet
+        on clip.amount = getnet.transaction_amount
+        and lpad(clip.bin,6,0) = lpad(left(replace(getnet.card_number,'-',''),6),6,0)
+        and lpad(clip.last4,4,0) = lpad(right(replace(getnet.card_number,'-',''),4),4,0)
+        and lpad(clip.trx_id,6,0) = lpad(replace(getnet.auth_code,'\'',''),6,0)
+        where  true
+        order by
+        settlement_date desc

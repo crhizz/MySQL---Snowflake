@@ -1,0 +1,73 @@
+SELECT
+    sml.RECORD_UUID,
+    sml.MERCHANT_ID,
+    --md.MERCHANT_NAME,
+    --md.EMAIL,
+    p.TRANSACTION_ID,
+    sml.MVNT_ID,
+    sml.MVNT_TYPE,
+    sml.PYMT_PRG,
+    sml.CREATED_AT,
+    sml.EFF_DT,
+    p.PSP_AMOUNT,
+    sml.GROSS_AMOUNT,
+    sml.FEES,
+    sml.TAXES,
+    sml.NET_AMOUNT,
+    sml.MDR,
+    sml.MSI,
+    p.NUMBER_MSI,
+    p.STATUS_CODE,
+    p.STATUS_MSG,
+    p.RECEIPT_NO,
+    p.TYPE,
+    dcc.DCC_AMOUNT,
+    dcc.RATE AS DCC_RATE,
+    dcc.NB_STATUS AS DCC_STATUS,
+    dcc.CC_NB_CURRENCY_CODE,
+    dcc.NU_MARKUP
+    
+FROM(SELECT record_uuid,
+            REPLACE(record_data:mvnt_id.S, '""') AS mvnt_id,
+            (CONVERT_TIMEZONE('UTC', 'America/Mexico_City', record_data:created_at.S)) AS created_at,
+            (CONVERT_TIMEZONE('UTC', 'America/Mexico_City', record_data:eff_dt.S)) AS eff_dt,
+            to_number(record_data:amount.N, 20, 4) AS gross_amount,
+            to_number(record_data:fees.N, 20, 4) AS fees,
+            to_number(record_data:taxes.N, 20, 4) AS taxes,
+            to_number(record_data:net_amount.N, 20, 4) AS net_amount,
+            to_number(record_data:mdr.N, 20, 4) AS mdr,
+            to_number(record_data:msi.N, 20, 4) AS msi,
+            REPLACE(record_data:mvnt_type.S, '""') AS mvnt_type,
+            --,record_data:payload.S as payload,
+            REPLACE(record_data:pk.S, 'M#') AS merchant_id,
+            REPLACE(record_data:pymt_prg.S, '""') AS pymt_prg,
+            REPLACE(record_data:ref_id.S,'""') AS ref_id,
+            REPLACE(record_data:status_code.S,'""') AS status_code
+            FROM "PRD_CLIP_ANALYTICS"."CLIPDS_DYNAMO_SILVER"."SETTLEMENT_MASTER_LOG"
+            WHERE mvnt_type = 'STL_PCS_RQ'
+            AND DATE(CONVERT_TIMEZONE('UTC', 'America/Mexico_City', record_data:eff_dt.S)) >= '2024-01-01'
+            AND DATE(CONVERT_TIMEZONE('UTC', 'America/Mexico_City', record_data:eff_dt.S)) <= '2024-01-31') sml
+       
+       LEFT JOIN(SELECT transaction_id,
+           receipt_no,
+           psp_amount,
+           type,
+           status_code,
+           status_msg,
+           CASE WHEN term IS NULL THEN 0 ELSE term END AS number_msi 
+           FROM "PRD_CLIP_ANALYTICS"."CLIPDW_TRANSACTION"."PAYMENT") p on sml.mvnt_id = p.transaction_id
+           
+       --LEFT JOIN(SELECT merchant_id,
+           --UPPER(REPLACE(REPLACE(REPLACE(merchant_name, '“',''),',',''),'"','')) AS merchant_name
+           --LOWER(REPLACE(REPLACE(REPLACE(email, '“',''),',',''),'"','')) AS email
+           --FROM PRD_CLIP_ANALYTICS.CLIPDS_MERCHANT.MERCHANT_DETAILS) md ON sml.merchant_id = md.merchant_id
+
+        LEFT JOIN(SELECT transaction_id,
+        nb_status,
+        cc_nb_currency_code,
+        dcc_amount,
+        nu_markup,
+        rate
+        FROM PRD_CLIP_ANALYTICS.CLIPDS_DYNAMO_GOLD.DCC_RATE) dcc ON sml.mvnt_id = dcc.transaction_id
+        
+        

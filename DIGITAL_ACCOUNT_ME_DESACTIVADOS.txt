@@ -1,0 +1,79 @@
+SELECT Q1.effective_date, SUM(Q1.qtyMovs +  NVL(Q2.qtyMovs,0)) AS qtyMovs, sum(Q1.totalAmount +  NVL(Q2.totalAmount,0)) as totalAmount
+FROM 
+(
+WITH qualified_merchant_with_all_mvnts AS (
+    SELECT
+        TO_CHAR(TO_DATE(ap_journal.eff_dt), 'yyyy-mm-dd') AS date_key
+        ,ap_journal.*
+    FROM prd_clip_analytics.clipds_dynamo_gold.ap_journal      
+    INNER JOIN prd_clip_analytics.clipds_dynamo_gold.merchant_attributes
+        ON REPLACE(merchant_attributes.record_data:merchant_id.S,'mid_','M#') = ap_journal.acct_id
+           AND merchant_attributes.record_data:payment_program.S = 'DIGITAL_ACCOUNT'
+)
+,digital_account_date_constraints AS (
+    SELECT
+        acct_id
+        ,NVL(
+            MAX(IFF(ap_journal.mvnt_type = 'DISB_RQ', ap_journal.eff_dt, NULL)),
+            MIN(ap_journal.eff_dt)
+        ) eff_dt_constraint
+        ,MAX(ap_journal.eff_dt) eff_dt_latest
+    FROM prd_clip_analytics.clipds_dynamo_gold.ap_journal
+    INNER JOIN qualified_merchant_with_all_mvnts USING (acct_id)
+    GROUP BY 1
+) 
+SELECT  
+    date_trunc('day', TO_DATE(qm.eff_dt, 'YYYY-MM-DD HH24:MI:SS'))::date as effective_date
+    ,count(qm.mvnt_id) as qtyMovs--Cantidad de movimientos
+    ,sum(qm.amount) as totalAmount --Monto a fondear
+FROM qualified_merchant_with_all_mvnts qm 
+    INNER JOIN digital_account_date_constraints dc
+    ON qm.acct_id = dc.acct_id AND qm.eff_dt >= dc.eff_dt_constraint
+WHERE 1=1
+    AND effective_date >= '2023-11-15'
+    AND qm.mvnt_type not ilike '%_da_%'
+    AND qm.mvnt_type <> 'DISB_RQ'
+group by effective_date
+order by effective_date
+) AS Q1 
+LEFT JOIN 
+(
+WITH qualified_merchant_with_all_mvnts AS (
+    SELECT
+        TO_CHAR(TO_DATE(ap_journal.eff_dt), 'yyyy-mm-dd') AS date_key
+        ,ap_journal.*
+    FROM prd_clip_analytics.clipds_dynamo_gold.ap_journal      
+    WHERE acct_id in ('M#73c3fd10-1ec8-4515-9919-8986fd11b64e','M#09765d21-8c0a-4355-a907-4269f4a22dd5','M#97ae3b77-33f5-4712-94f7-c12446730197','M#c31f4493-5b0d-4ec4-9ed3-746bde7f7ebe','M#45faf25e-b475-420e-a31b-134eb69cddff','M#5036c782-7de0-4ce0-8c26-0032dc55a496','M#8ec11b23-f27d-4ac9-aef5-c64c29f4a6e2','M#397b9c7b-3f15-4595-9086-0c998b9570ab','M#2bbc2b0b-aeec-40e8-a08c-b23b9f3df421','M#5511ceff-a267-4094-ae0e-5ae557ae4e7e','M#8cf4d6ee-ddfb-437d-9cc0-da783e9cb2d8','M#263f0494-f02f-48c9-b566-b2f0892f6681','M#746cf523-15e3-4c97-9754-7cfc8ecb4ee6','M#d56bb081-feb9-4f6c-8e35-1795c19a77a4','M#7656b3ed-be09-4db9-a254-fb9871b5d1bd','M#755a57f9-b64a-4227-b198-8248be741853','M#6cf6b625-1883-4305-b479-87e566c790a0','M#8c2637ef-a12a-4632-a2c6-e160f834ef4b','M#b12f0fe6-1462-4a81-8dca-ea6e31627964','M#d3d836c8-5509-4a66-a872-d436d4b5a443','M#4b0def18-aaa9-48cf-be31-ab9eeeeefbe7','M#ab2c6d17-4680-4dc9-b828-807866b6b01f','M#1799c281-acbe-4fd5-ba5d-869bdb751177','M#676f98f1-c1b5-4e4b-a868-0e0237dd4602','M#65756464-bef3-4010-a716-5e9e5318c01a','M#841410c5-e569-446a-bcde-76bbd26207cf','M#ea064d72-fd5e-41ab-9cff-a53cf0f496b0','M#2b50dbf3-9bff-4b6c-962e-ba9c38f00915','M#25588ff9-2a9e-4dc9-a2dd-14fb5115f1bc','M#077682f9-80b3-43ff-8494-9934c19186c6','M#27c22947-df6e-41f1-a139-606a8cfbbdc2','M#35685c9c-5f05-4544-8a69-c3cd33498f8b','M#67935746-9b39-4ec3-bd7f-0d12b3e448a4','M#35a6cd98-c1be-4d85-a6c0-da41ff9c8cae','M#9789e7c9-f747-400a-b662-4a8fb6ca7a89','M#ae799283-96d6-4a4d-8570-ea59fb161d6e','M#9dd36c9c-49a6-4234-8e82-2481c6377e41','M#228460de-9cd4-408e-965d-937bdfce4257','M#bd6e3a05-4a66-4adc-b266-0cb72e777b07','M#5a5350a8-900d-4d26-9bc8-66852879254a','M#0dcee2c1-7474-47df-b8cf-71fe2b2bff77','M#d6be32af-3c9d-4ab9-988d-f08d3179f70b','M#cb7272c1-e74e-4599-bf5e-51d1f5432ad2','M#3113c80b-fa9a-4249-bec0-6415200e1393','M#8dd2a7b4-36bf-4685-af91-82cc9b5c2cf1','M#376eab3c-7aac-4e4b-a6a2-00d0fb3b7b0e','M#97074880-94e6-4389-befd-d37c957f5d03','M#4cb93d36-3bc3-428b-8a9a-0232df8fc1bc')
+    AND created_at < '2023-12-19 21:00:00' 
+)
+,digital_account_date_constraints AS (
+    SELECT
+        acct_id
+        ,NVL(
+            MAX(IFF(ap_journal.mvnt_type = 'DISB_RQ', ap_journal.eff_dt, NULL)),
+            MIN(ap_journal.eff_dt)
+        ) eff_dt_constraint
+        ,MAX(ap_journal.eff_dt) eff_dt_latest
+    FROM prd_clip_analytics.clipds_dynamo_gold.ap_journal
+        INNER JOIN qualified_merchant_with_all_mvnts USING (acct_id)
+    WHERE created_at < '2023-12-19 21:00:00'     
+    GROUP BY 1
+) 
+SELECT  
+    date_trunc('day', TO_DATE(qm.eff_dt, 'YYYY-MM-DD HH24:MI:SS'))::date as effective_date
+    ,count(qm.mvnt_id) as qtyMovs--Cantidad de movimientos
+    ,sum(qm.amount) as totalAmount --Monto a fondear
+FROM qualified_merchant_with_all_mvnts qm 
+    INNER JOIN digital_account_date_constraints dc
+    ON qm.acct_id = dc.acct_id AND qm.eff_dt >= dc.eff_dt_constraint
+WHERE 1=1
+    AND effective_date >= '2023-11-15'
+    AND effective_date < '2023-12-20'
+    AND qm.mvnt_type not ilike '%_da_%'
+    AND qm.mvnt_type <> 'DISB_RQ'
+group by effective_date
+order by effective_date
+) AS Q2 on Q2.effective_date = Q1.effective_date
+GROUP BY Q1.effective_date
+order by Q1.effective_date
+;

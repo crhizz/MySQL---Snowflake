@@ -1,0 +1,14 @@
+with cte as (select MERCHANT_ID,
+    REPORT_ID,
+    payment_date_local,
+    row_number() over (partition by merchant_id order by payment_date_local desc) as rn
+    from (select merchant_id, report_id, (CONVERT_TIMEZONE('UTC','America/Mexico_City',UPDATED_AT)) as payment_date_local,
+                   row_number() over (partition by merchant_id, (CONVERT_TIMEZONE('UTC','America/Mexico_City',UPDATED_AT)) order by UPDATED_AT desc) as seqnum_id_day
+            from PRD_CLIP_ANALYTICS.CLIPDW_DISBURSEMENT.DISBURSEMENTS_PII t1
+           ) t1
+     where seqnum_id_day = 1
+    )
+select *
+from cte
+where rn = 1
+AND MERCHANT_ID IN ();

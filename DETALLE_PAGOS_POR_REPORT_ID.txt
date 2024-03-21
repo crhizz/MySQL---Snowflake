@@ -1,0 +1,42 @@
+SELECT 
+	r.merchant_id,
+    r.merchant_name,
+    --r.user_email,
+    t.transaction_id,
+    t.order_id,
+    t.receipt_no,
+    d.report_id,
+    r.report_id,
+    t.psp,
+    r.report_date_local,
+    rtli.transaction_date_local,
+    (CONVERT_TIMEZONE('UTC', 'America/Mexico_City', d.updated_at)) AS payment_date_local,
+	--t.mdr AS mdr_db,
+    --t.msi AS msi_db,
+    rtli.transaction_amount,
+    rtli.fees_charged,
+    rtli.taxes,
+    rtli.amount_due,
+    CASE
+        WHEN it.term IS NULL THEN 0
+        ELSE it.term
+    END AS msi,
+    d.status AS status_disbursement,
+    t.status_code,
+    t.status_msg,
+    t.brand
+FROM
+    PRD_CLIP_ANALYTICS.CLIPDW_TRANSACTION.PAYMENT t
+        LEFT JOIN
+    PRD_CLIP_ANALYTICS.CLIPDW_SETTLEMENT.ITEM_TRANSACTIONS it ON it.transaction_id = t.transaction_id
+        LEFT JOIN
+    PRD_CLIP_ANALYTICS.CLIPDW_SETTLEMENT.REPORT_TRANSACTION_LINE_ITEMS rtli ON rtli.item_id = it.item_id
+        LEFT JOIN
+    PRD_CLIP_ANALYTICS.CLIPDW_SETTLEMENT.REPORTS r ON r.report_id = rtli.report_id
+        LEFT JOIN
+    PRD_CLIP_ANALYTICS.CLIPDW_DISBURSEMENT.DISBURSEMENTS d ON r.report_id = d.report_id
+WHERE
+    t.transaction_id IN ('47b5c487-73df-4797-b6fa-7cb3a9616531')
+    --rtli.transaction_date_local >= '2023-02-01'
+    --AND rtli.transaction_date_local <= '2023-04-30'
+    ORDER BY r.merchant_id,r.report_date_local;

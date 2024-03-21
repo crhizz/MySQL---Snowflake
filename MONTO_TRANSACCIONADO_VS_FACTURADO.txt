@@ -1,0 +1,62 @@
+SELECT 
+    --p.merchant_id,
+    --p.uuid,
+    --p.transaction_id,
+    --UPPER(REPLACE(REPLACE(REPLACE(md.MERCHANT_NAME, '“', ''), ',', ''),'"','')) AS MERCHANT_NAME,
+    --p.user_email,
+    --p.order_id,
+    --tai.affiliation,
+    --tai.affiliation_type,
+    --tai.sub_affiliation,
+    --tai.mcc,
+    TO_VARCHAR(DATE(convert_timezone('UTC', 'America/Mexico_City', p.updated_at)), 'YYYYMM') AS updated_at_cdmx,
+    TO_VARCHAR(DATE(convert_timezone('UTC', 'America/Mexico_City', p.created_at)), 'YYYYMM') AS created_at_cdmx,
+    --DATE(p.created_at),
+    --DATE(p.updated_at),
+    --p.psp,
+    --p.psp_amount,
+    SUM(p.amount) AS AMOUNT,
+    --p.trx_id AS clave_autorizacion,
+    --tbp.bin,
+    --p.receipt_no,
+    --p.last4,
+    p.status_code,
+    --CASE
+     --   WHEN term IS NULL THEN 0
+     --   ELSE term
+    --END AS msi,
+    --p.device_id,
+    --COALESCE(CASE
+    --            WHEN LEFT(device_id, 2) = 'PP' THEN 'Clip Pro'
+    --            WHEN LEFT(device_id, 1) = 'N' THEN 'Clip Total'
+    --            WHEN LEFT(ksn, 3) = '091' THEN 'Clip Plus'
+    --            WHEN LEFT(ksn, 3) = '011' THEN 'Clip Plus 2'
+    --            ELSE 'Clip Classic'
+    --       END,
+    --        CASE
+    --           WHEN reader_type_code IN ('H' , 'He') THEN 'Clip Classic'
+    --            WHEN reader_type_code = 'Be' THEN 'Clip Plus'
+    --            WHEN reader_type_code IN ('B' , 'Li') THEN 'Clip Pro'
+    --           ELSE NULL
+    --        END,
+    --        'N/A') AS clip_reader,
+    --p.status_msg,
+    --tbp.issuer,
+    --tbp.brand,
+    sml.pymt_prg,
+    sml.mvnt_type,
+    TO_VARCHAR(DATE(convert_timezone('UTC', 'America/Mexico_City', sml.created_at)), 'YYYYMM') AS created_at_sml_cdmx,
+    TO_VARCHAR(DATE(convert_timezone('UTC', 'America/Mexico_City', sml.eff_dt)), 'YYYYMM') AS eff_dt_sml_cdmx
+    --DATE(sml.created_at) AS created_at_sml,
+    --DATE(sml.eff_dt) AS eff_dt_sml
+FROM
+    PRD_CLIP_ANALYTICS.CLIPDW_TRANSACTION.PAYMENT p
+        LEFT JOIN
+    PRD_CLIP_ANALYTICS.CLIPDS_DYNAMO_GOLD.SETTLEMENT_MASTER_LOG_PII sml ON sml.mvnt_id = p.transaction_id
+WHERE
+    DATE(convert_timezone('UTC', 'America/Mexico_City', p.created_at)) >= '2024-01-01'
+    AND DATE(convert_timezone('UTC', 'America/Mexico_City', p.created_at)) <= '2024-01-31'
+    --AND p.status_code = 1
+    --AND sml.mvnt_type = 'STL_PCS_RQ'
+    --AND sml.pymt_prg IS NULL
+    GROUP BY updated_at_cdmx, created_at_cdmx, created_at_sml_cdmx, eff_dt_sml_cdmx, p.status_code, sml.pymt_prg, sml.mvnt_type

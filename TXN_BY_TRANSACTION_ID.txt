@@ -1,0 +1,53 @@
+SELECT 
+    p.merchant_id,
+    p.uuid,
+    p.transaction_id,
+    --UPPER(REPLACE(REPLACE(REPLACE(md.MERCHANT_NAME, '“', ''), ',', ''),'"','')) AS MERCHANT_NAME,
+    --p.user_email,
+    p.order_id,
+    tai.affiliation,
+    tai.affiliation_type,
+    tai.sub_affiliation,
+    tai.mcc,
+    DATE(convert_timezone('UTC', 'America/Mexico_City', p.updated_at)) AS date_transaction,
+    p.created_at,
+    p.updated_at,
+    p.psp,
+    p.psp_amount,
+    p.amount,
+    p.trx_id AS clave_autorizacion,
+    tbp.bin,
+    p.receipt_no,
+    p.last4,
+    p.status_code,
+    CASE
+        WHEN term IS NULL THEN 0
+        ELSE term
+    END AS msi,
+    p.device_id,
+    COALESCE(CASE
+                WHEN LEFT(device_id, 2) = 'PP' THEN 'Clip Pro'
+                WHEN LEFT(device_id, 1) = 'N' THEN 'Clip Total'
+                WHEN LEFT(ksn, 3) = '091' THEN 'Clip Plus'
+                WHEN LEFT(ksn, 3) = '011' THEN 'Clip Plus 2'
+                ELSE 'Clip Classic'
+            END,
+            CASE
+                WHEN reader_type_code IN ('H' , 'He') THEN 'Clip Classic'
+                WHEN reader_type_code = 'Be' THEN 'Clip Plus'
+                WHEN reader_type_code IN ('B' , 'Li') THEN 'Clip Pro'
+                ELSE NULL
+            END,
+            'N/A') AS clip_reader,
+    p.status_msg,
+    tbp.issuer,
+    tbp.brand
+FROM
+    PRD_CLIP_ANALYTICS.CLIPDW_TRANSACTION.PAYMENT p
+        LEFT JOIN
+    PRD_CLIP_ANALYTICS.CLIPDW_TRANSACTION.TRANSACTION_AFFILIATION_INFO tai ON tai.transaction_id = p.transaction_id
+        LEFT JOIN
+    PRD_CLIP_ANALYTICS.CLIPDW_TRANSACTION.TRANSACTION_BIN_PROFILE tbp ON tbp.transaction_id = p.transaction_id
+WHERE
+    p.order_id IN ()
+    ORDER BY p.updated_at;

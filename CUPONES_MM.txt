@@ -1,0 +1,17 @@
+SELECT SUM(rtli.refund_amount) AS total_refunded,
+rfrli.amount - SUM(rtli.refund_amount) AS pending,
+COUNT(merchant_token) AS number_transactions,
+i.merchant_token,
+ifr.fee_refund_id,
+i.created_at,
+ifr.source,
+rfrli.amount,
+rfrli.report_id 
+FROM PRD_CLIP_ANALYTICS.CLIPDW_SETTLEMENT.ITEM_FEE_REFUNDS_PII ifr
+INNER JOIN PRD_CLIP_ANALYTICS.CLIPDW_SETTLEMENT.ITEMS_PII i ON i.item_id = ifr.item_id 
+INNER JOIN PRD_CLIP_ANALYTICS.CLIPDW_SETTLEMENT.REPORT_FEE_REFUNDS_LINE_ITEMS_PII rfrli ON rfrli.item_id = i.item_id 
+INNER JOIN PRD_CLIP_ANALYTICS.CLIPDW_SETTLEMENT.REPORT_TRANSACTION_LINE_ITEMS_PII rtli ON rtli.report_id = rfrli.report_id 
+WHERE ifr.fee_refund_id IN (
+	SELECT fee_refund_id FROM PRD_CLIP_ANALYTICS.CLIPDW_SETTLEMENT.FEE_REFUNDS_PII 
+	WHERE source='LOYALTY')
+GROUP BY rtli.report_id, merchant_token, rfrli.amount, ifr.fee_refund_id, i.created_at, ifr.source, rfrli.report_id 

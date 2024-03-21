@@ -1,0 +1,51 @@
+SELECT
+    ap_j.MERCHANT_ID,
+    --md.MERCHANT_NAME,
+    --md.EMAIL,
+    ap_j.AMOUNT,
+    ap_j.CURRENCY,
+    ap_j.TYPE_REQUEST,
+    ap_j.MVNT_ID,
+    ap_j.MOVEMENT_TYPE,
+    ap_j.SOURCE_TYPE,
+    ap_j.CREATED_AT,
+    ap_j.EFF_DT,
+    ap_j.MOVEMENT_DAY,
+    ap_j.REQUEST_EFFECTIVE_DATE,
+    ap_j.SLOT_DATE,
+    ret.TRANSACTION_ID,
+    sml.PYMT_PRG
+    FROM(SELECT REPLACE(REPLACE(record_data:acct_id.S, 'M#'),'L#') AS merchant_id,
+            to_number(record_data:amount.N, 20, 4) as AMOUNT,
+            (CONVERT_TIMEZONE('UTC','America/Mexico_City',record_data:created_at.S)) as created_at,
+            REPLACE(record_data:currency.S, '""') as currency,
+            REPLACE(record_data:desc.S, '""') as type_request,
+            (CONVERT_TIMEZONE('UTC','America/Mexico_City',record_data:eff_dt.S)) as eff_dt,
+            (CONVERT_TIMEZONE('UTC','America/Mexico_City',record_data:mvnt_dt.S)) as movement_day,
+            REPLACE(record_data:mvnt_id.S, '""') as mvnt_id,
+            REPLACE(record_data:mvnt_type.S, '""') as movement_type,
+            (CONVERT_TIMEZONE('UTC','America/Mexico_City',record_data:rq_eff_dt.S)) as request_effective_date,
+            (CONVERT_TIMEZONE('UTC','America/Mexico_City',record_data:slot_dt.S)) as slot_date,
+            REPLACE(record_data:src_type.S, '""') as source_type
+            FROM "PRD_CLIP_ANALYTICS"."CLIPDS_DYNAMO_SILVER"."AP_JOURNAL"
+            WHERE DATE(CONVERT_TIMEZONE('UTC', 'America/Mexico_City', record_data:eff_dt.S)) >= '2024-01-01'
+            AND DATE(CONVERT_TIMEZONE('UTC', 'America/Mexico_City', record_data:eff_dt.S)) <= '2024-01-31'
+            AND source_type = 'RISK'
+            AND movement_type LIKE '%REVIEW_RQ%'
+            ORDER BY merchant_id, created_at, type_request) ap_j
+            
+            --LEFT JOIN(SELECT merchant_id,
+            --UPPER(REPLACE(REPLACE(REPLACE(merchant_name, '“', ''), ',', ''),'"','')) AS merchant_name
+            --LOWER(REPLACE(REPLACE(REPLACE(email, '“', ''), ',', ''), '"', '')) AS email
+            --FROM PRD_CLIP_ANALYTICS.CLIPDS_MERCHANT.MERCHANT_DETAILS) md ON ap_j.merchant_id = md.merchant_id
+            
+            LEFT JOIN(SELECT journal_movement_id,
+            updated_at,
+            transaction_id
+            FROM PRD_CLIP_ANALYTICS.CLIPDW_RISK_OPERATIONS.RETENTIONS
+            GROUP BY journal_movement_id, transaction_id, updated_at) ret ON ret.journal_movement_id = ap_j.mvnt_id
+
+            LEFT JOIN (SELECT REPLACE(record_data:mvnt_id.S, '""') AS mvnt_id,
+            REPLACE(record_data:pymt_prg.S, '""') AS pymt_prg
+            FROM PRD_CLIP_ANALYTICS.CLIPDS_DYNAMO_SILVER.SETTLEMENT_MASTER_LOG
+            GROUP BY mvnt_id, pymt_prg) sml ON sml.mvnt_id = ret.transaction_id 

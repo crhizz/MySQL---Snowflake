@@ -1,0 +1,89 @@
+WITH GROUPED_TABLE AS (SELECT
+    ap_j.MERCHANT_ID,
+    md.MERCHANT_NAME,
+    --md.EMAIL,
+    ap_j.AMOUNT,
+    ap_j.CURRENCY,
+    ap_j.TYPE_REQUEST,
+    ap_j.MVNT_ID,
+    ap_j.MOVEMENT_TYPE,
+    ap_j.SOURCE_TYPE,
+    ap_j.CREATED_AT,
+    ap_j.EFF_DT,
+    ap_j.MOVEMENT_DAY,
+    ap_j.REQUEST_EFFECTIVE_DATE,
+    ap_j.SLOT_DATE,
+    CASE WHEN ap_j.SOURCE_TYPE = 'DISB' THEN ap_j.TYPE_REQUEST
+    ELSE NULL
+    END AS REPORT_ID,
+    CASE WHEN ap_j.SOURCE_TYPE = 'DISB' THEN DATE(ap_j.EFF_DT)
+    ELSE NULL
+    END AS EFF_DT_DISB,
+    CONCAT(REPORT_ID,'_',EFF_DT_DISB) AS REPORT_ID_INDEX,
+    COUNT(REPORT_ID_INDEX) OVER (ORDER BY ap_j.MERCHANT_ID ASC, ap_j.EFF_DT DESC) as _GRP
+    FROM(SELECT REPLACE(REPLACE(record_data:acct_id.S, 'M#'),'L#') AS merchant_id,
+    to_number(record_data:amount.N, 20, 4) as AMOUNT,
+    (CONVERT_TIMEZONE('UTC','America/Mexico_City',record_data:created_at.S)) as created_at,
+    REPLACE(record_data:currency.S, '""') as currency,
+    REPLACE(record_data:desc.S, '""') as type_request,
+    (CONVERT_TIMEZONE('UTC','America/Mexico_City',record_data:eff_dt.S)) as eff_dt,
+    (CONVERT_TIMEZONE('UTC','America/Mexico_City',record_data:mvnt_dt.S)) as movement_day,
+    REPLACE(record_data:mvnt_id.S, '""') as mvnt_id,
+    REPLACE(record_data:mvnt_type.S, '""') as movement_type,
+    (CONVERT_TIMEZONE('UTC','America/Mexico_City',record_data:rq_eff_dt.S)) as request_effective_date,
+    (CONVERT_TIMEZONE('UTC','America/Mexico_City',record_data:slot_dt.S)) as slot_date,
+    REPLACE(record_data:src_type.S, '""') as source_type
+    FROM "PRD_CLIP_ANALYTICS"."CLIPDS_DYNAMO_SILVER"."AP_JOURNAL") ap_j
+            
+    LEFT JOIN(SELECT merchant_id,
+    UPPER(REPLACE(REPLACE(REPLACE(merchant_name, '“', ''), ',', ''),'"','')) AS merchant_name
+    --LOWER(REPLACE(REPLACE(REPLACE(email, '“', ''), ',', ''), '"', '')) AS email
+    FROM PRD_CLIP_ANALYTICS.CLIPDS_MERCHANT.MERCHANT_DETAILS) md ON ap_j.merchant_id = md.merchant_id),
+
+    FINAL_TABLE AS (SELECT MERCHANT_ID,
+    MERCHANT_NAME,
+    AMOUNT,
+    CURRENCY,
+    TYPE_REQUEST,
+    MVNT_ID,
+    MOVEMENT_TYPE,
+    SOURCE_TYPE,
+    CREATED_AT,
+    EFF_DT,
+    MOVEMENT_DAY,
+    REQUEST_EFFECTIVE_DATE,
+    SLOT_DATE,
+    REPORT_ID,
+    EFF_DT_DISB,
+    REPORT_ID_INDEX,
+    _GRP,
+    FIRST_VALUE(REPORT_ID_INDEX) OVER (PARTITION BY MERCHANT_ID, _GRP ORDER BY MERCHANT_ID ASC, EFF_DT DESC) AS REPORT_ID_INDEX_FINAL,
+    SPLIT_PART(REPORT_ID_INDEX_FINAL, '_', 1) AS REPORT_ID_FINAL,
+    TO_CHAR(SPLIT_PART(REPORT_ID_INDEX_FINAL, '_', 2)) AS EFF_DT_DISB_FINAL
+    FROM GROUPED_TABLE)
+
+    SELECT MERCHANT_ID,
+    MERCHANT_NAME,
+    AMOUNT,
+    CURRENCY,
+    TYPE_REQUEST,
+    MVNT_ID,
+    MOVEMENT_TYPE,
+    SOURCE_TYPE,
+    CREATED_AT,
+    EFF_DT,
+    MOVEMENT_DAY,
+    REQUEST_EFFECTIVE_DATE,
+    SLOT_DATE,
+    REPORT_ID,
+    EFF_DT_DISB,
+    REPORT_ID_INDEX,
+    _GRP,
+    REPORT_ID_INDEX_FINAL,
+    REPORT_ID_FINAL,
+    EFF_DT_DISB_FINAL
+    FROM FINAL_TABLE
+
+    WHERE EFF_DT >= '2023-09-01'
+    AND EFF_DT <= '2023-09-30'
+    ORDER BY MERCHANT_ID ASC, EFF_DT DESC

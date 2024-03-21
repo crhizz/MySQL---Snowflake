@@ -1,0 +1,37 @@
+SELECT
+	r.TYPE AS "type",
+    d.MERCHANT_ID AS "merchant_id",
+    d.MERCHANT_TOKEN AS "merchant_token",
+    REPLACE(REPLACE(REPLACE(d.MERCHANT_NAME, '“',''),',',''),'"','') AS "merchant_name",
+    r.USER_EMAIL AS "user_email",
+    d.REPORT_ID AS "report_id",
+    CASE
+    WHEN r.TYPE IS NULL THEN DATE(CONVERT_TIMEZONE('UTC','America/Mexico_City',d.REPORT_DATE_LOCAL))
+    ELSE DATE(d.REPORT_DATE_LOCAL)
+    END AS "report_date_local",
+    d.AMOUNT AS "amount",
+    d.STATUS AS "status",
+    dbe.BANK_NAME AS "bank_name",
+    (CONVERT_TIMEZONE('UTC','America/Mexico_City',d.UPDATED_AT)) AS "payment_date_local",
+    REPLACE(REPLACE(REPLACE(dbe.BANK_ACCOUNT_OWNER_NAME, '“',''),',',''),'"','') AS "bank_account_owner_name",
+    CONCAT('\'', REPLACE(dbe.BANK_ACCOUNT_NUMBER, ' ','')) AS "bank_account_number",
+	(CONVERT_TIMEZONE('UTC','America/Mexico_City',dbe.CREATED_AT)) AS "batch_created_date",
+    db.DISBURSEMENT_METHOD AS "disbursement_method",
+    CONCAT(LEFT(REPLACE(REPLACE(REPLACE(dbe.bank_account_owner_name, '“',''),',',''),'"',''),40),
+			',,',
+            d.amount,
+            ',',
+            dbe.bank_account_number,
+            ',CLIP-',
+            d.report_id) AS "swap"      
+FROM PRD_CLIP_ANALYTICS.CLIPDW_DISBURSEMENT.DISBURSEMENTS_PII d
+LEFT JOIN PRD_CLIP_ANALYTICS.CLIPDW_SETTLEMENT.REPORTS_PII r ON r.report_id = d.report_id
+LEFT JOIN PRD_CLIP_ANALYTICS.CLIPDW_DISBURSEMENT.DISBURSEMENT_BATCH_ENTRIES_PII dbe ON dbe.disbursement_id = d.disbursement_id
+LEFT JOIN PRD_CLIP_ANALYTICS.CLIPDW_DISBURSEMENT.DISBURSEMENT_BATCHES_PII db ON db.disbursement_batch_id = dbe.disbursement_batch_id
+WHERE d.report_id IN ('OJBXQSJ3H',
+'O9W8CQYRR',
+'OW98VQ8JZ',
+'OV6JLSJYD',
+'ONKWWQ63R',
+'O4WP3NW2F')
+ORDER BY d.merchant_id, d.report_date_local, d.report_id
